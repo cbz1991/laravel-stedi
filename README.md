@@ -393,15 +393,28 @@ php artisan stedi:payers "aetna"        # look up payer IDs
 
 ## Testing your app
 
-`Stedi::fake()` stubs the APIs with `{api}/{path}` keys. Requests that don't
-match get an empty `200`, so tests never reach Stedi.
+`Stedi::fake()` keeps every request away from Stedi. Without stubs, each
+operation answers with Stedi's own example response from its API reference:
+an eligibility check comes back with active coverage, a payer search with a
+page of payers, a claim submission accepted, and so on. Your code runs
+against realistic data with one line:
 
 ```php
 use Cabuz\Stedi\Facades\Stedi;
 
+Stedi::fake();
+
+$eligibility = Stedi::checkEligibility([...]);
+$eligibility->isActive();                       // true
+$eligibility->outOfPocket('30', 'IN_NETWORK');  // "8000"
+```
+
+Stub the requests your test cares about with `{api}/{path}` keys:
+
+```php
 Stedi::fake([
-    'healthcare/eligibility-check' => ['planStatus' => [['status' => 'Active Coverage']]],
-    'payers/payers/search*' => ['items' => [], 'nextPageToken' => null],
+    'healthcare/eligibility-check' => ['errors' => [['code' => '75', 'description' => 'Subscriber/Insured Not Found']]],
+    'payers/payers/search*' => ['items' => []],
 ]);
 
 // ... exercise your code ...
@@ -417,7 +430,10 @@ The callback gets the JSON body and the `Illuminate\Http\Client\Request`.
 
 The API names are `healthcare`, `claims`, `manager`, `payers`, `enrollment`,
 `events` and `core`. Patterns match the full URL, so use a trailing `*` for
-requests with a query string.
+requests with a query string. Example responses are a single page (no
+`nextPageToken`), and operations without one, such as PDF downloads, return an
+empty body. `Stedi::fake(examples: false)` answers every unstubbed request
+with an empty `200` instead, as before 1.1.2.
 
 To test your webhook listeners end to end, sign a payload with
 `WebhookSignature::sign()`:
@@ -470,7 +486,8 @@ See [CHANGELOG.md](CHANGELOG.md).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). The methods are generated from
 Stedi's OpenAPI specs: `bin/update-specs` refreshes them and `bin/generate`
-rebuilds the methods, the facade docblock and `api.md`.
+rebuilds the methods, the facade docblock, `api.md` and the example
+responses `Stedi::fake()` serves (`resources/fakes.json`).
 
 ## Security
 

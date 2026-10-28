@@ -1,5 +1,6 @@
-# Generates src/Concerns/*.php (one method per Stedi operation) and tests/Fixtures/operations.json
-# from the OpenAPI snapshots in tests/Fixtures/openapi. Run it through bin/generate.
+# Generates src/Concerns/*.php (one method per Stedi operation), tests/Fixtures/operations.json and
+# resources/fakes.json (Stedi's example responses, served by Stedi::fake()) from the OpenAPI
+# snapshots in tests/Fixtures/openapi. Run it through bin/generate.
 import json, os, re, sys, textwrap
 
 root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
@@ -41,7 +42,27 @@ def summary(o):
     s = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', s)
     return s.rstrip('.') + '.' if s else ''
 
+def example(d, o):
+    for code in ('200', '201', '202'):
+        content = res(d, o.get('responses', {}).get(code, {})).get('content', {}).get('application/json', {})
+        if 'example' in content:
+            return content['example']
+        for ex in content.get('examples', {}).values():
+            return res(d, ex).get('value')
+    return None
+
+def scrub(x):
+    # One page only, so lazy() ends; and no secret-shaped strings for scanners to flag.
+    if isinstance(x, dict):
+        return {k: scrub(v) for k, v in x.items() if k != 'nextPageToken'}
+    if isinstance(x, list):
+        return [scrub(v) for v in x]
+    if isinstance(x, str) and x.startswith('whsec_'):
+        return 'whsec_ZmFrZS1zdGVkaS13ZWJob29rLXNlY3JldA=='
+    return x
+
 operations = []
+fakes = {}
 for spec, trait, host, desc in APIS:
     d = json.load(open(os.path.join(specs_dir, spec)))
     methods = []
@@ -113,6 +134,9 @@ for spec, trait, host, desc in APIS:
             sig = f"    public function {name}({', '.join(args)}): {ret}"
             methods.append('\n'.join(lines + [sig, '    {', f'        {code}', '    }']))
             operations.append((name, verb.upper(), host, path, o['operationId']))
+            ex = None if binary else example(d, o)
+            if ex is not None:
+                fakes[f'{verb.upper()} {host} {path}'] = scrub(ex)
 
     uses = ['use Cabuz\\Stedi\\Support\\CursorPage;'] if any('CursorPage' in m for m in methods) else []
     if any('Str::uuid' in m for m in methods):
@@ -129,3 +153,7 @@ dupes = {n for n in names if names.count(n) > 1}
 print(len(operations), 'operations; duplicates:', dupes or 'none')
 json.dump([f'{v} {h} {p}' for _, v, h, p, _ in sorted(operations, key=lambda o: (o[2], o[3], o[1]))],
           open(os.path.join(root, 'tests', 'Fixtures', 'operations.json'), 'w'), indent=2)
+with open(os.path.join(root, 'resources', 'fakes.json'), 'w') as f:
+    json.dump(dict(sorted(fakes.items())), f, indent=1, ensure_ascii=False)
+    f.write('\n')
+print(len(fakes), 'example responses')

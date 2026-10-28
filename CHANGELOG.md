@@ -4,6 +4,16 @@ All notable changes to `laravel-stedi` will be documented in this file.
 
 ## Unreleased
 
+## 1.1.2 - 2026-10-28
+
+- `Stedi::fake()` answers unstubbed requests with Stedi's example response
+  for the operation, taken from its OpenAPI specs (74 operations), instead of
+  an empty `200`: eligibility checks come back with active coverage, payer
+  searches with payers, claim submissions accepted. Examples are a single
+  page, and operations without one (file downloads, deletes) return an empty
+  body. `Stedi::fake(examples: false)` keeps the old empty responses.
+- `bin/generate` writes the examples to `resources/fakes.json`.
+
 ## 1.1.1 - 2026-10-28
 
 - `checkEligibility()` returns the payer's AAA rejections (which Stedi sends

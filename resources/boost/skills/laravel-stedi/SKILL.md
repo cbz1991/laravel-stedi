@@ -83,4 +83,4 @@ Stedi::assertNotSent('claims/*');
 Stedi::assertNothingSent();
 ```
 
-Keys are `{api}/{path}` with api `healthcare`, `claims`, `manager`, `payers`, `enrollment`, `events` or `core`. Unmatched Stedi requests get an empty 200. Sign webhook test requests with `Cabuz\Stedi\Webhooks\WebhookSignature::sign($body, $id, $timestamp, $secret)`.
+Keys are `{api}/{path}` with api `healthcare`, `claims`, `manager`, `payers`, `enrollment`, `events` or `core`. Unstubbed requests get Stedi's example response for the operation (an active eligibility check, a page of payers, an accepted claim...), so `Stedi::fake()` alone is enough for happy-path tests; stub only what the test is about. `Stedi::fake(examples: false)` returns empty 200s instead. Sign webhook test requests with `Cabuz\Stedi\Webhooks\WebhookSignature::sign($body, $id, $timestamp, $secret)`.

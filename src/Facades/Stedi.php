@@ -126,13 +126,15 @@ class Stedi extends Facade
      * Keys are "{api}/{path}" (wildcards allowed), where api is healthcare,
      * claims, manager, payers, enrollment, events or core, e.g.
      * "healthcare/eligibility-check" or "payers/payers/search*". Values are
-     * JSON arrays or Http::response() / Http::sequence() stubs. Unmatched
-     * Stedi requests get an empty 200, so tests never reach Stedi. Assert on
+     * JSON arrays or Http::response() / Http::sequence() stubs. Other Stedi
+     * requests get Stedi's example response for the operation (an active
+     * eligibility check, a search result, an accepted claim...), or an empty
+     * 200 with $examples false, so tests never reach Stedi. Assert on
      * requests with Stedi::assertSent() and friends.
      *
      * @param  array<string, array<mixed>|PromiseInterface|Closure>  $responses
      */
-    public static function fake(array $responses = []): void
+    public static function fake(array $responses = [], bool $examples = true): void
     {
         $app = static::getFacadeApplication();
 
@@ -148,9 +150,60 @@ class Stedi extends Facade
             $stubs[static::url($key)] = is_array($response) ? Http::response($response) : $response;
         }
 
-        $stubs['https://*.stedi.com/*'] = Http::response([]);
+        $fallback = function (Request $request) use ($examples) {
+            if (! $examples) {
+                return Http::response([]);
+            }
+
+            // Operations without an example, such as file downloads, get an empty body.
+            return Http::response(static::example($request) ?? '');
+        };
+
+        foreach (array_keys(StediClient::ENDPOINTS) as $api) {
+            $stubs[static::url($api.'/*')] ??= $fallback;
+        }
+
+        $stubs['https://*.stedi.com/*'] ??= $fallback;
 
         Http::fake($stubs);
+    }
+
+    /**
+     * Stedi's example response for the operation a request calls, from the
+     * OpenAPI specs (resources/fakes.json), or null when there is none.
+     *
+     * @return array<mixed>|null
+     */
+    public static function example(Request $request): ?array
+    {
+        static $examples = null;
+
+        if ($examples === null) {
+            $examples = (array) json_decode((string) file_get_contents(__DIR__.'/../../resources/fakes.json'), true);
+
+            // Literal paths (/payers/search) before templated ones (/payers/{id}).
+            uksort($examples, fn (string $a, string $b) => [substr_count($a, '{'), $a] <=> [substr_count($b, '{'), $b]);
+        }
+
+        /** @var StediClient $client */
+        $client = static::getFacadeRoot();
+        $url = (string) strtok($request->url(), '?');
+
+        foreach ($examples as $operation => $response) {
+            [$method, $api, $path] = explode(' ', $operation, 3);
+
+            if ($method !== $request->method()) {
+                continue;
+            }
+
+            $segments = array_map(fn (string $part) => preg_quote($part, '#'), (array) preg_split('#\{\w+\}#', $path));
+
+            if (preg_match('#^'.preg_quote($client->endpoint($api), '#').implode('[^/]+', $segments).'$#', $url) === 1) {
+                return (array) $response;
+            }
+        }
+
+        return null;
     }
 
     /**

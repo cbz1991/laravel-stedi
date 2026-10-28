@@ -24,7 +24,7 @@ The operation methods are generated from Stedi's
 
 ```bash
 bin/update-specs   # refresh the spec snapshots
-bin/generate       # rebuild src/Concerns, the facade docblock and api.md (needs python3)
+bin/generate       # rebuild src/Concerns, the facade docblock, api.md and resources/fakes.json (needs python3)
 composer test
 ```
 
