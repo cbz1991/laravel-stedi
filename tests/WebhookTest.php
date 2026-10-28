@@ -51,6 +51,17 @@ class WebhookTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_an_invalid_secret_does_not_lock_out_the_other_while_rotating(): void
+    {
+        $signature = WebhookSignature::sign('{}', 'msg_1', 1000, self::SECRET);
+
+        WebhookSignature::verify('{}', 'msg_1', '1000', $signature, ['whsec_not base64!', '', self::SECRET], now: 1000);
+        $this->addToAssertionCount(1);
+
+        $this->expectExceptionMessage('not valid base64');
+        WebhookSignature::verify('{}', 'msg_1', '1000', $signature, ['whsec_not base64!'], now: 1000);
+    }
+
     public function test_stale_timestamps_are_rejected(): void
     {
         $signature = WebhookSignature::sign('{}', 'msg_1', 1000, self::SECRET);

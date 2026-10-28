@@ -39,7 +39,7 @@ $response = Stedi::createEligibilityCheck([
 ]);
 ```
 
-Prefer `Stedi::checkEligibility([...])` (same body) when the code needs answers rather than the raw response: it returns `Cabuz\Stedi\Support\EligibilityResponse` with `hasErrors()`/`errors()` (AAA rejections), `isActive($stc)`, `copay($stc, $network, $level)`, `coinsurance()`, `deductible()`, `deductibleRemaining()`, `outOfPocket()`, `outOfPocketRemaining()` and `benefits($category, ...)`; array access still reads the raw response. Network is `IN_NETWORK` or `OUT_OF_NETWORK`.
+Prefer `Stedi::checkEligibility([...])` (same body) when the code needs answers rather than the raw response: it returns `Cabuz\Stedi\Support\EligibilityResponse` with `hasErrors()`/`errors()` (AAA rejections: Stedi sends them as a 400, but `checkEligibility()` returns them instead of throwing, so check `hasErrors()` first), `isActive($stc)`, `copay($stc, $network, $level)`, `coinsurance()`, `deductible()`, `deductibleRemaining()`, `outOfPocket()`, `outOfPocketRemaining()` and `benefits($category, ...)`; array access still reads the raw response. Network is `IN_NETWORK` or `OUT_OF_NETWORK`.
 
 Find payer IDs with `Stedi::searchPayers(['query' => 'blue cross'])`. Other checks: `eligibilityCheck()` (v3 format), `coordinationOfBenefits()`, `insuranceDiscoveryCheck()`, and batches with `batchEligibilityChecks()` + `getBatchItems($batchId)`. To act when a batch finishes, dispatch `new Cabuz\Stedi\Jobs\PollEligibilityBatch($batchId)` and listen for `Cabuz\Stedi\Events\EligibilityBatchFinished`; don't write a polling loop.
 

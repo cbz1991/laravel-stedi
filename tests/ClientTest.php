@@ -3,11 +3,15 @@
 namespace Cabuz\Stedi\Tests;
 
 use Cabuz\Stedi\Exceptions\AuthenticationException;
+use Cabuz\Stedi\Exceptions\ConflictException;
 use Cabuz\Stedi\Exceptions\ConnectionException;
 use Cabuz\Stedi\Exceptions\InvalidRequestException;
 use Cabuz\Stedi\Exceptions\MissingApiKeyException;
+use Cabuz\Stedi\Exceptions\NotFoundException;
 use Cabuz\Stedi\Exceptions\PermissionDeniedException;
+use Cabuz\Stedi\Exceptions\RateLimitException;
 use Cabuz\Stedi\Exceptions\ServerException;
+use Cabuz\Stedi\Exceptions\StediException;
 use Cabuz\Stedi\Facades\Stedi;
 use Illuminate\Http\Client\ConnectionException as HttpConnectionException;
 use Illuminate\Http\Client\Request;
@@ -94,21 +98,46 @@ class ClientTest extends TestCase
             ->push(['message' => 'Unauthorized'], 401),
         ]);
 
-        try {
-            Stedi::listClaims(['pageSize' => 1]);
-        } catch (InvalidRequestException $e) {
-            $this->assertSame('1 validation error detected', $e->error());
-            $this->assertSame([['path' => '/pageSize', 'message' => 'too small']], $e->fieldErrors());
-        }
+        $e = $this->catch(fn () => Stedi::listClaims(['pageSize' => 1]), InvalidRequestException::class);
+        $this->assertSame('1 validation error detected', $e->error());
+        $this->assertSame([['path' => '/pageSize', 'message' => 'too small']], $e->fieldErrors());
+        $this->assertSame(400, $e->status());
 
-        try {
-            Stedi::listProviders();
-        } catch (PermissionDeniedException $e) {
-            $this->assertSame('access_denied', $e->errorCode());
-        }
+        $e = $this->catch(fn () => Stedi::listProviders(), PermissionDeniedException::class);
+        $this->assertSame('access_denied', $e->errorCode());
 
-        $this->expectException(AuthenticationException::class);
-        Stedi::getClaim('c1');
+        $this->catch(fn () => Stedi::getClaim('c1'), AuthenticationException::class);
+    }
+
+    public function test_every_status_maps_to_its_exception(): void
+    {
+        Http::fake(['*' => Http::sequence()
+            ->push(['message' => 'Not found'], 404)
+            ->push(['message' => 'Already exists'], 409)
+            ->push(['message' => 'slow down'], 429, ['Retry-After' => '7'])
+            ->push('<html>Bad gateway</html>', 502),
+        ]);
+        $stedi = Stedi::withRetries(0);
+
+        $this->catch(fn () => $stedi->getClaim('c1'), NotFoundException::class);
+        $this->catch(fn () => $stedi->createEnrollment([]), ConflictException::class);
+        $this->assertSame(7, $this->catch(fn () => $stedi->getClaim('c1'), RateLimitException::class)->retryAfter());
+
+        $e = $this->catch(fn () => $stedi->getClaim('c1'), ServerException::class);
+        $this->assertNull($e->error());
+        $this->assertStringContainsString('failed with 502: Bad Gateway', $e->getMessage());
+    }
+
+    public function test_field_errors_are_read_from_the_errors_list_too(): void
+    {
+        Http::fake(['*' => Http::response(['message' => 'Invalid request', 'errors' => [
+            ['path' => '/subscriber/memberId', 'message' => 'is required'],
+            ['code' => '79', 'description' => 'Invalid Participant Identification'],
+        ]], 400)]);
+
+        $e = $this->catch(fn () => Stedi::createEligibilityCheck([]), InvalidRequestException::class);
+
+        $this->assertSame([['path' => '/subscriber/memberId', 'message' => 'is required']], $e->fieldErrors());
     }
 
     public function test_connection_errors_are_wrapped(): void
@@ -196,5 +225,24 @@ class ClientTest extends TestCase
         Stedi::clearResolvedInstances();
 
         $this->assertNull(Stedi::lastResponse());
+    }
+
+    /**
+     * @template T of StediException
+     *
+     * @param  class-string<T>  $class
+     * @return T
+     */
+    private function catch(callable $callback, string $class): StediException
+    {
+        try {
+            $callback();
+        } catch (StediException $e) {
+            $this->assertInstanceOf($class, $e);
+
+            return $e;
+        }
+
+        $this->fail("Expected a {$class}.");
     }
 }

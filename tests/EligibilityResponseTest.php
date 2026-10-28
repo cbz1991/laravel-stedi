@@ -2,6 +2,7 @@
 
 namespace Cabuz\Stedi\Tests;
 
+use Cabuz\Stedi\Exceptions\InvalidRequestException;
 use Cabuz\Stedi\Facades\Stedi;
 use Cabuz\Stedi\Support\EligibilityResponse;
 use Illuminate\Support\Facades\Http;
@@ -61,16 +62,33 @@ class EligibilityResponseTest extends TestCase
         $this->assertSame([], EligibilityResponse::from([])->plans());
     }
 
+    public function test_a_payers_aaa_rejection_is_returned_not_thrown(): void
+    {
+        Http::fake(['*' => Http::sequence()
+            ->push($this->specExample('400', 'CreateEligibilityCheck_example3'), 400)
+            ->push($this->specExample('400', 'CreateEligibilityCheck_example2'), 400),
+        ]);
+
+        $eligibility = Stedi::checkEligibility([]);
+
+        $this->assertTrue($eligibility->hasErrors());
+        $this->assertSame('79', $eligibility->errors()[0]['code']);
+        $this->assertFalse($eligibility->isActive());
+
+        $this->expectException(InvalidRequestException::class);
+        Stedi::checkEligibility([]);
+    }
+
     /**
      * @return array<string, mixed>
      */
-    private function specExample(): array
+    private function specExample(string $status = '200', string $name = 'CreateEligibilityCheck_example1'): array
     {
         $spec = json_decode((string) file_get_contents(__DIR__.'/Fixtures/openapi/healthcare.json'), true);
 
         foreach ($spec['paths'] as $path => $operations) {
             if (str_ends_with($path, '/eligibility-check')) {
-                return $operations['post']['responses']['200']['content']['application/json']['examples']['CreateEligibilityCheck_example1']['value'];
+                return $operations['post']['responses'][$status]['content']['application/json']['examples'][$name]['value'];
             }
         }
 

@@ -34,12 +34,17 @@ class WebhookSignature
             throw InvalidWebhookSignatureException::because('the timestamp is outside the tolerance');
         }
 
+        $usable = false;
+
         foreach ((array) $secrets as $secret) {
-            if ($secret === '') {
+            // While rotating, a mistyped old secret must not lock out the new one.
+            try {
+                $expected = static::sign($payload, $id, (int) $timestamp, $secret);
+            } catch (InvalidWebhookSignatureException) {
                 continue;
             }
 
-            $expected = static::sign($payload, $id, (int) $timestamp, $secret);
+            $usable = true;
 
             foreach (explode(' ', $signatures) as $signature) {
                 if (hash_equals($expected, $signature)) {
@@ -48,7 +53,7 @@ class WebhookSignature
             }
         }
 
-        throw InvalidWebhookSignatureException::because('no signature matches');
+        throw InvalidWebhookSignatureException::because($usable ? 'no signature matches' : 'the webhook secret is not valid base64');
     }
 
     /**

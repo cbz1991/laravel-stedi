@@ -4,6 +4,20 @@ All notable changes to `laravel-stedi` will be documented in this file.
 
 ## Unreleased
 
+## 1.1.1 - 2026-10-28
+
+- `checkEligibility()` returns the payer's AAA rejections (which Stedi sends
+  as a `400` with the usual response body) instead of throwing, so
+  `hasErrors()` and `errors()` see them. Requests Stedi rejects before they
+  reach the payer still throw `InvalidRequestException`.
+- `fieldErrors()` also reads field errors from the `errors` list that newer
+  Stedi endpoints send, skipping AAA rejections.
+- While rotating webhook secrets, a secret that is not valid base64 no longer
+  makes every delivery fail when it is listed before the valid one.
+- More tests for error mapping (404, 409, 429 with `Retry-After`, non-JSON
+  5xx bodies), and the README explains when config changes made at runtime
+  take effect.
+
 ## 1.1.0 - 2026-10-28
 
 - `Stedi::checkEligibility()` returns an `EligibilityResponse` with

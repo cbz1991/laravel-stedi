@@ -70,14 +70,20 @@ class StediException extends RuntimeException
 
     /**
      * Field-level validation errors: a list of ['path' => ..., 'message' => ...].
+     * Stedi sends them as fieldList or, on newer endpoints, as errors (which
+     * also holds a payer's AAA rejections; those have a code and are skipped).
      *
      * @return list<array<string, mixed>>
      */
     public function fieldErrors(): array
     {
-        $fields = $this->response?->json('fieldList');
+        $fields = $this->response?->json('fieldList') ?? $this->response?->json('errors');
 
-        return is_array($fields) ? array_values($fields) : [];
+        if (! is_array($fields)) {
+            return [];
+        }
+
+        return array_values(array_filter($fields, fn ($field) => is_array($field) && isset($field['message']) && ! isset($field['code'])));
     }
 
     public function status(): ?int

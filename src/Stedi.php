@@ -10,6 +10,7 @@ use Cabuz\Stedi\Concerns\EventDestinations;
 use Cabuz\Stedi\Concerns\Healthcare;
 use Cabuz\Stedi\Concerns\Payers;
 use Cabuz\Stedi\Exceptions\ConnectionException;
+use Cabuz\Stedi\Exceptions\InvalidRequestException;
 use Cabuz\Stedi\Exceptions\MissingApiKeyException;
 use Cabuz\Stedi\Exceptions\StediException;
 use Cabuz\Stedi\Support\CursorPage;
@@ -151,13 +152,27 @@ class Stedi
      * Run a real-time eligibility check (createEligibilityCheck) and wrap the
      * response with helpers: isActive(), copay(), deductibleRemaining(), ...
      *
+     * A payer's AAA rejection comes back as a 400 with the usual response
+     * body; it is returned too, with the rejection in errors(). Requests
+     * Stedi rejects before reaching the payer still throw.
+     *
      * @param  array<string, mixed>  $data
      *
      * @throws StediException
      */
     public function checkEligibility(array $data): EligibilityResponse
     {
-        return new EligibilityResponse($this->createEligibilityCheck($data));
+        try {
+            return new EligibilityResponse($this->createEligibilityCheck($data));
+        } catch (InvalidRequestException $e) {
+            $body = $e->response?->json();
+
+            if (! is_array($body) || ! is_array($body['errors'] ?? null) || ! isset($body['errors'][0]['code'])) {
+                throw $e;
+            }
+
+            return new EligibilityResponse($body);
+        }
     }
 
     // ------------------------------------------------------------------

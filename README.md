@@ -131,6 +131,12 @@ $eligibility->benefits('limitations', service: '33');  // any category, filtered
 $eligibility['plans'];                                 // the raw response is still there
 ```
 
+A payer's AAA rejection (for example code `75`, subscriber not found) comes
+back from Stedi as a `400` with the usual body. `checkEligibility()` returns
+it like any other answer, with the rejection in `errors()`; it only throws
+`InvalidRequestException` when Stedi rejects the request before it reaches the
+payer.
+
 The filters are optional: `service` (an STC code), `network` (`IN_NETWORK` or
 `OUT_OF_NETWORK`; entries for both networks match either) and `level`
 (`INDIVIDUAL`, `FAMILY`, ...). Amounts come back as strings, exactly as the
@@ -235,7 +241,10 @@ Stedi::withApiKey($tenant->stedi_key)->createEligibilityCheck([...]);
 ```
 
 `withTimeout()`, `withRetries()`, `withHeaders()` and `withConfig()` return a
-copy with one setting changed the same way.
+copy with one setting changed the same way. Prefer them to changing
+`config('stedi.*')` at runtime: the client reads the config once, when a
+request or job first uses it, so a later `config([...])` call only reaches the
+next request or job.
 
 ## Webhooks
 
@@ -339,7 +348,7 @@ try {
 } catch (InvalidRequestException $e) {
     $e->error();        // Stedi's message
     $e->errorCode();    // e.g. "access_denied", when Stedi sends one
-    $e->fieldErrors();  // [['path' => '/subscriber/memberId', 'message' => '...'], ...]
+    $e->fieldErrors();  // [['path' => '/subscriber/memberId', 'message' => '...'], ...] (fieldList or errors)
     $e->status();       // 400
     $e->response;       // the Illuminate\Http\Client\Response
 }
