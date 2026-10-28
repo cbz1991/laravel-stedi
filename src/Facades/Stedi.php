@@ -5,8 +5,11 @@ namespace Cabuz\Stedi\Facades;
 use Cabuz\Stedi\Stedi as StediClient;
 use Closure;
 use GuzzleHttp\Promise\PromiseInterface;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
+use PHPUnit\Framework\Assert as PHPUnit;
 
 /**
  * @method static StediClient withApiKey(string $apiKey)
@@ -17,6 +20,7 @@ use Illuminate\Support\Facades\Http;
  * @method static mixed config(string $key, mixed $default = null)
  * @method static \Illuminate\Http\Client\Response|null lastResponse()
  * @method static string endpoint(string $api)
+ * @method static \Cabuz\Stedi\Support\EligibilityResponse checkEligibility(array<string, mixed> $data)
  * @method static array<string, mixed> request(string $api, string $method, string $path, array<string, mixed> $query = [], array<string, mixed>|null $data = null, ?string $idempotencyKey = null)
  * @method static \Cabuz\Stedi\Support\CursorPage paginate(string $api, string $method, string $path, array<string, mixed> $query = [])
  * @method static \Illuminate\Http\Client\Response send(string $api, string $method, string $path, array<string, mixed> $query = [], array<string, mixed>|null $data = null, ?string $idempotencyKey = null)
@@ -124,7 +128,7 @@ class Stedi extends Facade
      * "healthcare/eligibility-check" or "payers/payers/search*". Values are
      * JSON arrays or Http::response() / Http::sequence() stubs. Unmatched
      * Stedi requests get an empty 200, so tests never reach Stedi. Assert on
-     * requests with Http::assertSent().
+     * requests with Stedi::assertSent() and friends.
      *
      * @param  array<string, array<mixed>|PromiseInterface|Closure>  $responses
      */
@@ -138,24 +142,88 @@ class Stedi extends Facade
             static::clearResolvedInstance(StediClient::class);
         }
 
-        /** @var StediClient $client */
-        $client = static::getFacadeRoot();
         $stubs = [];
 
         foreach ($responses as $key => $response) {
-            if (str_starts_with($key, 'http')) {
-                $url = $key;
-            } else {
-                [$api, $path] = array_pad(explode('/', ltrim($key, '/'), 2), 2, '');
-                $url = $client->endpoint($api).'/'.$path;
-            }
-
-            $stubs[$url] = is_array($response) ? Http::response($response) : $response;
+            $stubs[static::url($key)] = is_array($response) ? Http::response($response) : $response;
         }
 
         $stubs['https://*.stedi.com/*'] = Http::response([]);
 
         Http::fake($stubs);
+    }
+
+    /**
+     * Assert that a request matching "{api}/{path}" (wildcards allowed) was
+     * sent, and that the callback, given the JSON body and the request,
+     * returns true for it.
+     *
+     * @param  (Closure(array<string, mixed>, Request): bool)|null  $callback
+     */
+    public static function assertSent(string $key, ?Closure $callback = null): void
+    {
+        PHPUnit::assertTrue(
+            static::sent($key, $callback) !== [],
+            "No Stedi request matching [{$key}] was sent.",
+        );
+    }
+
+    /**
+     * @param  (Closure(array<string, mixed>, Request): bool)|null  $callback
+     */
+    public static function assertNotSent(string $key, ?Closure $callback = null): void
+    {
+        PHPUnit::assertSame(
+            [], static::sent($key, $callback),
+            "An unexpected Stedi request matching [{$key}] was sent.",
+        );
+    }
+
+    /**
+     * Assert how many Stedi requests were sent, optionally only those
+     * matching "{api}/{path}".
+     */
+    public static function assertSentCount(int $count, ?string $key = null): void
+    {
+        PHPUnit::assertCount($count, static::sent($key ?? '*'), 'Unexpected number of Stedi requests.');
+    }
+
+    public static function assertNothingSent(): void
+    {
+        static::assertSentCount(0);
+    }
+
+    /**
+     * The recorded Stedi requests matching "{api}/{path}" ("*" for all) and
+     * the callback.
+     *
+     * @param  (Closure(array<string, mixed>, Request): bool)|null  $callback
+     * @return list<Request>
+     */
+    public static function sent(string $key = '*', ?Closure $callback = null): array
+    {
+        $patterns = $key === '*'
+            ? array_map(fn (string $api) => static::url($api.'/*'), array_keys(StediClient::ENDPOINTS))
+            : [static::url($key)];
+
+        return Http::recorded(function (Request $request) use ($patterns, $callback) {
+            return Str::is($patterns, (string) strtok($request->url(), '?'))
+                && ($callback === null || $callback($request->data(), $request));
+        })->map(fn (array $pair) => $pair[0])->values()->all();
+    }
+
+    /**
+     * The URL pattern of a "{api}/{path}" key; full URLs pass through.
+     */
+    protected static function url(string $key): string
+    {
+        if (str_starts_with($key, 'http')) {
+            return $key;
+        }
+
+        [$api, $path] = array_pad(explode('/', ltrim($key, '/'), 2), 2, '');
+
+        return static::getFacadeRoot()->endpoint($api).'/'.$path;
     }
 
     protected static function getFacadeAccessor(): string

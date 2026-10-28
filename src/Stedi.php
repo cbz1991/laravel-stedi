@@ -13,6 +13,7 @@ use Cabuz\Stedi\Exceptions\ConnectionException;
 use Cabuz\Stedi\Exceptions\MissingApiKeyException;
 use Cabuz\Stedi\Exceptions\StediException;
 use Cabuz\Stedi\Support\CursorPage;
+use Cabuz\Stedi\Support\EligibilityResponse;
 use Composer\InstalledVersions;
 use Illuminate\Container\Container;
 use Illuminate\Http\Client\ConnectionException as HttpConnectionException;
@@ -140,6 +141,23 @@ class Stedi
         }
 
         return rtrim($endpoint, '/');
+    }
+
+    // ------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Run a real-time eligibility check (createEligibilityCheck) and wrap the
+     * response with helpers: isActive(), copay(), deductibleRemaining(), ...
+     *
+     * @param  array<string, mixed>  $data
+     *
+     * @throws StediException
+     */
+    public function checkEligibility(array $data): EligibilityResponse
+    {
+        return new EligibilityResponse($this->createEligibilityCheck($data));
     }
 
     // ------------------------------------------------------------------

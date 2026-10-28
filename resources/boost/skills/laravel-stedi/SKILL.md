@@ -39,7 +39,9 @@ $response = Stedi::createEligibilityCheck([
 ]);
 ```
 
-Find payer IDs with `Stedi::searchPayers(['query' => 'blue cross'])`. Other checks: `eligibilityCheck()` (v3 format), `coordinationOfBenefits()`, `insuranceDiscoveryCheck()`, and batches with `batchEligibilityChecks()` + `getBatchItems($batchId)`.
+Prefer `Stedi::checkEligibility([...])` (same body) when the code needs answers rather than the raw response: it returns `Cabuz\Stedi\Support\EligibilityResponse` with `hasErrors()`/`errors()` (AAA rejections), `isActive($stc)`, `copay($stc, $network, $level)`, `coinsurance()`, `deductible()`, `deductibleRemaining()`, `outOfPocket()`, `outOfPocketRemaining()` and `benefits($category, ...)`; array access still reads the raw response. Network is `IN_NETWORK` or `OUT_OF_NETWORK`.
+
+Find payer IDs with `Stedi::searchPayers(['query' => 'blue cross'])`. Other checks: `eligibilityCheck()` (v3 format), `coordinationOfBenefits()`, `insuranceDiscoveryCheck()`, and batches with `batchEligibilityChecks()` + `getBatchItems($batchId)`. To act when a batch finishes, dispatch `new Cabuz\Stedi\Jobs\PollEligibilityBatch($batchId)` and listen for `Cabuz\Stedi\Events\EligibilityBatchFinished`; don't write a polling loop.
 
 ## Claims
 
@@ -53,12 +55,12 @@ The package registers `POST /stedi/webhook` (`STEDI_WEBHOOK_PATH`), verifies Ste
 public function handle(WebhookReceived $event): void
 {
     if ($event->is('enrollment.*')) {
-        $enrollment = Stedi::getEnrollment($event->resourceId());
+        $enrollment = $event->fetch();
     }
 }
 ```
 
-Events only carry `type()`, `resourceId()` and `resourceType()`; fetch the resource. Don't build another webhook route or verify signatures by hand.
+Each documented type also fires its own subclass in `Cabuz\Stedi\Events`: `EnrollmentActivated`, `EnrollmentRejected`, `EnrollmentUpdated`, `EnrollmentTaskAssigned`, `EnrollmentTaskCompleted`, `EnrollmentTaskDeleted`, `TransactionProcessed`, `FileProcessed`, `FileFailed`, `EventPing`, `AppInstalled`, `AppUninstalled`; listen for those when one type matters. Events only carry `type()`, `resourceId()` and `resourceType()`; `fetch()` loads the resource. Make the listeners queued (`ShouldQueue`). Don't build another webhook route or verify signatures by hand.
 
 ## Errors
 
@@ -76,7 +78,9 @@ Stedi::fake([
     'payers/payers/search*' => ['items' => [], 'nextPageToken' => null],
 ]);
 
-Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/eligibility-check'));
+Stedi::assertSent('healthcare/eligibility-check', fn (array $body) => $body['payerId'] === '60054');
+Stedi::assertNotSent('claims/*');
+Stedi::assertNothingSent();
 ```
 
 Keys are `{api}/{path}` with api `healthcare`, `claims`, `manager`, `payers`, `enrollment`, `events` or `core`. Unmatched Stedi requests get an empty 200. Sign webhook test requests with `Cabuz\Stedi\Webhooks\WebhookSignature::sign($body, $id, $timestamp, $secret)`.

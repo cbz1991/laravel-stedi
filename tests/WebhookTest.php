@@ -2,8 +2,11 @@
 
 namespace Cabuz\Stedi\Tests;
 
+use Cabuz\Stedi\Events\EnrollmentActivated;
+use Cabuz\Stedi\Events\TransactionProcessed;
 use Cabuz\Stedi\Events\WebhookReceived;
 use Cabuz\Stedi\Exceptions\InvalidWebhookSignatureException;
+use Cabuz\Stedi\Facades\Stedi;
 use Cabuz\Stedi\Webhooks\WebhookSignature;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
@@ -69,6 +72,32 @@ class WebhookTest extends TestCase
             && $event->resourceType() === 'enrollment'
             && $event->isProduction()
             && $event->webhookId === 'msg_1');
+    }
+
+    public function test_known_types_also_fire_their_own_event(): void
+    {
+        Event::fake([WebhookReceived::class, EnrollmentActivated::class, TransactionProcessed::class]);
+
+        $this->deliver(self::EVENT, 'msg_1')->assertOk();
+        $this->deliver(['type' => 'something.new'] + self::EVENT, 'msg_2')->assertOk();
+
+        Event::assertDispatchedTimes(WebhookReceived::class, 2);
+        Event::assertDispatchedTimes(EnrollmentActivated::class, 1);
+        Event::assertDispatched(EnrollmentActivated::class, fn (EnrollmentActivated $event) => $event->resourceId() === 'enr_1');
+        Event::assertNotDispatched(TransactionProcessed::class);
+    }
+
+    public function test_fetch_loads_the_resource_the_event_is_about(): void
+    {
+        Stedi::fake([
+            'enrollment/enrollments/enr_1' => ['id' => 'enr_1', 'status' => 'LIVE'],
+            'core/transactions/txn_1' => ['transactionId' => 'txn_1'],
+        ]);
+
+        $this->assertSame('LIVE', (new WebhookReceived(self::EVENT, 'msg_1'))->fetch()['status'] ?? null);
+        $this->assertSame('txn_1', (new TransactionProcessed(['resource' => ['id' => 'txn_1', 'type' => 'transaction']] + self::EVENT, 'msg_1'))->fetch()['transactionId'] ?? null);
+        $this->assertNull((new WebhookReceived(['resource' => ['id' => 't1', 'type' => 'enrollment.task']] + self::EVENT, 'msg_1'))->fetch());
+        Stedi::assertSentCount(2);
     }
 
     public function test_tampered_or_unsigned_deliveries_are_rejected(): void

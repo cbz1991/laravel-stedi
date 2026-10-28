@@ -6,5 +6,6 @@
 - Every operation is one method named after Stedi's operation ID, like the official SDK: `Stedi::createEligibilityCheck([...])`, `Stedi::listClaims([...])`, `Stedi::searchPayers([...])`. Look up exact names and endpoints in the package's `api.md`; don't guess.
 - Methods take arrays shaped like the Stedi API reference and return decoded JSON arrays; list methods return a `CursorPage` (`lazy()` streams every page); file downloads return the raw contents.
 - Claim submissions get an idempotency key automatically; pass your own (`idempotencyKey: "invoice-{$id}"`) to make your own retries safe.
-- Handle Stedi webhooks by listening for `Cabuz\Stedi\Events\WebhookReceived` (the package's route verifies signatures); set `STEDI_WEBHOOK_SECRET`. Events are thin: fetch the resource in the listener.
-- Never log or dump request bodies: they contain patient data. In tests use `Stedi::fake(['healthcare/eligibility-check' => [...]])` and Stedi's mock values, never real patient data.
+- For eligibility answers (active coverage, copay, deductible, out-of-pocket), use `Stedi::checkEligibility([...])`, which returns an `EligibilityResponse` with helpers, instead of walking the raw response.
+- Handle Stedi webhooks by listening for `Cabuz\Stedi\Events\WebhookReceived` or a typed subclass such as `EnrollmentActivated` or `TransactionProcessed` (the package's route verifies signatures); set `STEDI_WEBHOOK_SECRET`. Events are thin: `$event->fetch()` loads the resource. Use queued listeners.
+- Never log or dump request bodies: they contain patient data. In tests use `Stedi::fake(['healthcare/eligibility-check' => [...]])`, `Stedi::assertSent('healthcare/eligibility-check', fn (array $body) => ...)` and Stedi's mock values, never real patient data.

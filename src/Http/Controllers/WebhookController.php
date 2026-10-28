@@ -53,7 +53,7 @@ class WebhookController
         // again. The ID is stored only after the listeners ran, so a failed
         // delivery is processed again on retry.
         if (! (bool) ($config['deduplicate'] ?? true)) {
-            $events->dispatch(new WebhookReceived($event, $id));
+            $this->dispatch($events, new WebhookReceived($event, $id));
 
             return new Response('', 200);
         }
@@ -74,7 +74,7 @@ class WebhookController
                 return new Response('', 200);
             }
 
-            $events->dispatch(new WebhookReceived($event, $id));
+            $this->dispatch($events, new WebhookReceived($event, $id));
 
             $cache->put($key, true, now()->addDays(3));
         } finally {
@@ -82,5 +82,17 @@ class WebhookController
         }
 
         return new Response('', 200);
+    }
+
+    /**
+     * Fire WebhookReceived, then the type's own event when there is one.
+     */
+    protected function dispatch(Dispatcher $events, WebhookReceived $event): void
+    {
+        $events->dispatch($event);
+
+        if (($typed = $event->typed()) !== null) {
+            $events->dispatch($typed);
+        }
     }
 }

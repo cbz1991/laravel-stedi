@@ -108,6 +108,37 @@ From the terminal: `php artisan stedi:payers "blue cross"`.
 
 ### Check eligibility
 
+`checkEligibility()` runs a real-time check and answers the usual questions
+without digging through the response:
+
+```php
+$eligibility = Stedi::checkEligibility([...]);  // same body as createEligibilityCheck()
+
+if ($eligibility->hasErrors()) {
+    $eligibility->errors();  // the payer's AAA rejections: code, description, followupAction
+}
+
+$eligibility->isActive();                          // active coverage for any service
+$eligibility->isActive('98');                      // ... for a Service Type Code
+$eligibility->copay('98', 'IN_NETWORK');           // "25"
+$eligibility->coinsurance('30', 'IN_NETWORK');     // "0.2" (20%)
+$eligibility->deductible(network: 'IN_NETWORK');   // "1500" for the year
+$eligibility->deductibleRemaining(network: 'IN_NETWORK', level: 'INDIVIDUAL');
+$eligibility->outOfPocket();
+$eligibility->outOfPocketRemaining();
+
+$eligibility->benefits('limitations', service: '33');  // any category, filtered, as a collection
+$eligibility['plans'];                                 // the raw response is still there
+```
+
+The filters are optional: `service` (an STC code), `network` (`IN_NETWORK` or
+`OUT_OF_NETWORK`; entries for both networks match either) and `level`
+(`INDIVIDUAL`, `FAMILY`, ...). Amounts come back as strings, exactly as the
+payer sent them, or `null` when the payer sent none. Wrap a response you
+already have with `EligibilityResponse::from($array)`.
+
+The other eligibility endpoints return arrays:
+
 ```php
 $response = Stedi::createEligibilityCheck([...]);  // JSON eligibility check
 Stedi::eligibilityCheck([...]);                    // the v3 (Change Healthcare-compatible) endpoint
@@ -116,12 +147,25 @@ Stedi::coordinationOfBenefits([...]);
 Stedi::insuranceDiscoveryCheck([...]);
 ```
 
-Batch checks run in the background:
+Batch checks run in the background. Queue `PollEligibilityBatch` to learn
+when one finishes; it checks the batch every minute (without holding a worker
+in between) and fires `EligibilityBatchFinished`:
 
 ```php
+use Cabuz\Stedi\Events\EligibilityBatchFinished;
+use Cabuz\Stedi\Jobs\PollEligibilityBatch;
+
 $batch = Stedi::batchEligibilityChecks(['items' => [...]]);
-Stedi::getBatchItems($batch['batchId'])->lazy()->each(fn ($item) => ...);
+dispatch(new PollEligibilityBatch($batch['batchId']));  // interval: 60, timeout: 86400, apiKey: null
+
+Event::listen(function (EligibilityBatchFinished $event) {
+    $event->status();  // COMPLETED, COMPLETED_WITH_ERRORS or VALIDATION_FAILED
+    Stedi::getBatchItems($event->batchId())->lazy()->each(fn ($item) => ...);
+});
 ```
+
+Pass `apiKey:` when the batch was submitted with another key; the job is
+encrypted on the queue.
 
 ### Submit claims
 
@@ -217,12 +261,31 @@ The package registers a route for them:
    class HandleStediEvent implements ShouldQueue
    {
        public function handle(WebhookReceived $event): void
-   {
+       {
            if ($event->is('enrollment.*')) {
-               $enrollment = Stedi::getEnrollment($event->resourceId());
+               $enrollment = $event->fetch();  // Stedi::getEnrollment($event->resourceId())
                // ...
            }
        }
+   }
+   ```
+
+   Or listen for one type only. Every documented Stedi event type also fires
+   its own class, which extends `WebhookReceived`:
+
+   | Event type | Class in `Cabuz\Stedi\Events` |
+   |---|---|
+   | `enrollment.activated`, `.rejected`, `.updated` | `EnrollmentActivated`, `EnrollmentRejected`, `EnrollmentUpdated` |
+   | `enrollment.task.assigned`, `.completed`, `.deleted` | `EnrollmentTaskAssigned`, `EnrollmentTaskCompleted`, `EnrollmentTaskDeleted` |
+   | `transaction.processed` | `TransactionProcessed` (277CA, 835, ...) |
+   | `file.processed`, `file.failed` | `FileProcessed`, `FileFailed` |
+   | `event.ping` | `EventPing` |
+   | `app.installed`, `app.uninstalled` | `AppInstalled`, `AppUninstalled` |
+
+   ```php
+   public function handle(TransactionProcessed $event): void
+   {
+       $transaction = $event->fetch();
    }
    ```
 
@@ -246,6 +309,7 @@ retries it later, so listeners never run twice for one event.
 | `is('enrollment.*')` | whether the type matches |
 | `resourceId()`, `resourceType()` | what the event is about |
 | `isProduction()` | `false` for test-mode events |
+| `fetch()` | the enrollment, transaction, execution or destination, from the API (`fetch($client)` for another key) |
 | `$payload`, `$webhookId` | the full event and the delivery ID |
 
 To rotate the secret without downtime, list both while the old one is still
@@ -325,8 +389,6 @@ match get an empty `200`, so tests never reach Stedi.
 
 ```php
 use Cabuz\Stedi\Facades\Stedi;
-use Illuminate\Http\Client\Request;
-use Illuminate\Support\Facades\Http;
 
 Stedi::fake([
     'healthcare/eligibility-check' => ['planStatus' => [['status' => 'Active Coverage']]],
@@ -335,9 +397,14 @@ Stedi::fake([
 
 // ... exercise your code ...
 
-Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/eligibility-check')
-    && $request['subscriber']['memberId'] === 'AETNA12345');
+Stedi::assertSent('healthcare/eligibility-check', fn (array $body) => $body['subscriber']['memberId'] === 'AETNA12345');
+Stedi::assertNotSent('claims/*');
+Stedi::assertSentCount(1);
+Stedi::assertNothingSent();
 ```
+
+The callback gets the JSON body and the `Illuminate\Http\Client\Request`.
+`Stedi::sent('payers/*')` returns the matching requests.
 
 The API names are `healthcare`, `claims`, `manager`, `payers`, `enrollment`,
 `events` and `core`. Patterns match the full URL, so use a trailing `*` for

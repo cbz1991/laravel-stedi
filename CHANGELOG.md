@@ -4,6 +4,25 @@ All notable changes to `laravel-stedi` will be documented in this file.
 
 ## Unreleased
 
+## 1.1.0 - 2026-10-28
+
+- `Stedi::checkEligibility()` returns an `EligibilityResponse` with
+  `isActive()`, `copay()`, `coinsurance()`, `deductible()`,
+  `deductibleRemaining()`, `outOfPocket()`, `outOfPocketRemaining()`,
+  `benefits()` and the payer's AAA `errors()`, filtered by service type,
+  network and coverage level. Array access still reads the raw response.
+- Testing: `Stedi::assertSent()`, `assertNotSent()`, `assertSentCount()`,
+  `assertNothingSent()` and `sent()`, matched with the same `{api}/{path}`
+  keys as `Stedi::fake()`.
+- Every documented webhook event type also fires its own event class
+  (`EnrollmentActivated`, `TransactionProcessed`, `FileFailed`, ...), which
+  extends `WebhookReceived`. `WebhookReceived::fetch()` loads the resource the
+  event is about.
+- `PollEligibilityBatch` job: checks a batch eligibility check until it
+  finishes, without blocking a worker, and fires `EligibilityBatchFinished`.
+- Requires `illuminate/bus` and `illuminate/queue` (part of every Laravel app).
+- Fixed the indentation of the webhook listener example in the README.
+
 ## 1.0.1 - 2026-10-28
 
 - The client is bound as a scoped instance instead of a singleton, so under

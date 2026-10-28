@@ -5,6 +5,7 @@ namespace Cabuz\Stedi\Tests;
 use Cabuz\Stedi\Facades\Stedi;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\ExpectationFailedException;
 
 class FakeAndCommandsTest extends TestCase
 {
@@ -20,6 +21,30 @@ class FakeAndCommandsTest extends TestCase
         $this->assertSame([], Stedi::getClaim('c1'));
 
         Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/eligibility-check'));
+    }
+
+    public function test_fake_assertions_match_api_relative_paths(): void
+    {
+        Stedi::fake();
+        Stedi::assertNothingSent();
+
+        Stedi::createEligibilityCheck(['payerId' => '60054']);
+        Stedi::searchPayers(['query' => 'aetna']);
+
+        Stedi::assertSent('healthcare/eligibility-check');
+        Stedi::assertSent('healthcare/eligibility-check', fn (array $data) => $data['payerId'] === '60054');
+        Stedi::assertSent('payers/payers/search', fn (array $data, Request $request) => str_contains($request->url(), 'query=aetna'));
+        Stedi::assertNotSent('healthcare/eligibility-check', fn (array $data) => $data['payerId'] === '1');
+        Stedi::assertNotSent('claims/*');
+        Stedi::assertSentCount(2);
+        Stedi::assertSentCount(1, 'payers/*');
+
+        try {
+            Stedi::assertSent('claims/claims');
+            $this->fail('assertSent() should fail for a request that was not sent.');
+        } catch (ExpectationFailedException $e) {
+            $this->assertStringContainsString('claims/claims', $e->getMessage());
+        }
     }
 
     public function test_check_reports_the_key_mode(): void
