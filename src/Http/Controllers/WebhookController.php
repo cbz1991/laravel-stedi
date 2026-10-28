@@ -5,6 +5,7 @@ namespace Cabuz\Stedi\Http\Controllers;
 use Cabuz\Stedi\Events\WebhookReceived;
 use Cabuz\Stedi\Exceptions\InvalidWebhookSignatureException;
 use Cabuz\Stedi\Webhooks\WebhookSignature;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Http\Request;
@@ -51,17 +52,33 @@ class WebhookController
         // Stedi retries until it gets a 2xx; acknowledge repeats without firing
         // again. The ID is stored only after the listeners ran, so a failed
         // delivery is processed again on retry.
-        $deduplicate = (bool) ($config['deduplicate'] ?? true);
-        $key = 'stedi-webhook:'.$id;
+        if (! (bool) ($config['deduplicate'] ?? true)) {
+            $events->dispatch(new WebhookReceived($event, $id));
 
-        if ($deduplicate && $cache->has($key)) {
             return new Response('', 200);
         }
 
-        $events->dispatch(new WebhookReceived($event, $id));
+        $key = 'stedi-webhook:'.$id;
+        $store = $cache->getStore();
 
-        if ($deduplicate) {
+        // While another delivery of the same event is being handled, ask Stedi
+        // to retry later instead of firing the listeners twice.
+        $lock = $store instanceof LockProvider ? $store->lock($key.':lock', 120) : null;
+
+        if ($lock !== null && ! $lock->get()) {
+            return new Response('Delivery in progress.', 409);
+        }
+
+        try {
+            if ($cache->has($key)) {
+                return new Response('', 200);
+            }
+
+            $events->dispatch(new WebhookReceived($event, $id));
+
             $cache->put($key, true, now()->addDays(3));
+        } finally {
+            $lock?->release();
         }
 
         return new Response('', 200);

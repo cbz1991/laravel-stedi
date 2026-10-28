@@ -207,16 +207,21 @@ The package registers a route for them:
    STEDI_WEBHOOK_SECRET=whsec_...
    ```
 
-3. Listen for `Cabuz\Stedi\Events\WebhookReceived`:
+3. Listen for `Cabuz\Stedi\Events\WebhookReceived`, preferably in a queued
+   listener:
 
    ```php
    use Cabuz\Stedi\Events\WebhookReceived;
+   use Illuminate\Contracts\Queue\ShouldQueue;
 
-   public function handle(WebhookReceived $event): void
+   class HandleStediEvent implements ShouldQueue
    {
-       if ($event->is('enrollment.*')) {
-           $enrollment = Stedi::getEnrollment($event->resourceId());
-           // ...
+       public function handle(WebhookReceived $event): void
+   {
+           if ($event->is('enrollment.*')) {
+               $enrollment = Stedi::getEnrollment($event->resourceId());
+               // ...
+           }
        }
    }
    ```
@@ -226,7 +231,14 @@ signature and the timestamp (5 minutes of tolerance), answers `400` to
 anything unsigned, and acknowledges redeliveries of an event it already
 handled without firing it again. If a listener throws, the delivery fails and
 Stedi retries it later. Events are thin (type and resource ID), so fetch the
-resource in your listener, ideally in a queued one.
+resource in your listener.
+
+Listeners run before Stedi gets its answer, so a slow synchronous listener can
+make the delivery time out and come back. Queued listeners answer at once; the
+event only holds the payload array, so it queues as is. When your cache store
+supports locks (Redis, database, Memcached, DynamoDB, file, array), a second
+delivery of an event that is still being handled gets a `409` and Stedi
+retries it later, so listeners never run twice for one event.
 
 | Event method | Returns |
 |---|---|
@@ -270,11 +282,16 @@ try {
 ```
 
 `Stedi::lastResponse()` returns the raw response of the most recent request.
+The client is bound as a scoped instance, so under Octane and in queue
+workers each request or job starts with a fresh client and never sees another
+one's response.
 
 ## Retries
 
 A request is retried up to 2 times (`STEDI_RETRIES`), with a delay that
-doubles after each attempt and follows `Retry-After` when Stedi sends it:
+doubles after each attempt and follows `Retry-After` when Stedi sends it. No
+wait is longer than 10 seconds (`STEDI_RETRY_MAX_DELAY`, in milliseconds), so
+a rate-limited request does not hold a web request for minutes:
 
 - **429 Too Many Requests**: retried for every request.
 - **5xx and connection errors**: retried for reads, and for writes sent with
@@ -351,6 +368,7 @@ $this->call('POST', '/stedi/webhook', server: [
 | `timeout` | `STEDI_TIMEOUT` | `60` seconds |
 | `retries` | `STEDI_RETRIES` | `2` |
 | `retry_delay` | `STEDI_RETRY_DELAY` | `500` ms |
+| `retry_max_delay` | `STEDI_RETRY_MAX_DELAY` | `10000` ms |
 | `headers` | none | `[]` |
 | `endpoints` | none | Stedi's hosts; override one, e.g. for a proxy |
 | `log` | `STEDI_LOG` | none (off) |
@@ -358,7 +376,7 @@ $this->call('POST', '/stedi/webhook', server: [
 | `webhook.path` | `STEDI_WEBHOOK_PATH` | `stedi/webhook` |
 | `webhook.secret` | `STEDI_WEBHOOK_SECRET` | none |
 | `webhook.tolerance` | `STEDI_WEBHOOK_TOLERANCE` | `300` seconds |
-| `webhook.deduplicate` | none | `true` (uses your default cache store) |
+| `webhook.deduplicate` | none | `true` (uses your default cache store and its locks) |
 | `webhook.middleware` | none | `[]` |
 
 ## AI assistants

@@ -1,7 +1,7 @@
 {
     "name": "cabuz/laravel-stedi",
     "description": "Laravel SDK for the Stedi healthcare APIs: real-time eligibility checks, claims, claim status, remittances, payers, enrollment and signed webhooks.",
-    "keywords": ["laravel", "laravel-package", "php", "stedi", "sdk", "api-client", "healthcare", "edi", "x12", "eligibility", "claims", "clearinghouse", "webhooks"],
+    "keywords": ["laravel", "laravel-package", "php", "stedi", "sdk", "api-client", "healthcare", "edi", "x12", "eligibility", "claims", "clearinghouse", "webhooks", "medical-billing", "remittance", "insurance"],
     "license": "MIT",
     "homepage": "https://github.com/cbz1991/laravel-stedi",
     "authors": [

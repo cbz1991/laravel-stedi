@@ -15,7 +15,9 @@ class StediServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/stedi.php', 'stedi');
 
-        $this->app->singleton(Stedi::class, fn ($app) => new Stedi(
+        // Scoped, not a singleton: the client keeps the last response, which can
+        // hold patient data, so Octane requests and queued jobs each get their own.
+        $this->app->scoped(Stedi::class, fn ($app) => new Stedi(
             $app->make(HttpFactory::class),
             (array) $app['config']->get('stedi', []),
         ));

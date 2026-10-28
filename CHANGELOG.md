@@ -4,6 +4,20 @@ All notable changes to `laravel-stedi` will be documented in this file.
 
 ## Unreleased
 
+## 1.0.1 - 2026-10-28
+
+- The client is bound as a scoped instance instead of a singleton, so under
+  Octane and in queue workers `Stedi::lastResponse()` (which can hold patient
+  data) never carries over to another request or job.
+- Concurrent deliveries of the same webhook event no longer fire
+  `WebhookReceived` twice: the route takes a cache lock and answers `409` to
+  the second delivery, which Stedi retries later.
+- Waits between retries are capped by the new `retry_max_delay` option
+  (`STEDI_RETRY_MAX_DELAY`, 10 seconds by default), also when `Retry-After`
+  asks for longer. It was 60 seconds per attempt before.
+- Added the Packagist keywords `medical-billing`, `remittance` and
+  `insurance`; the README recommends queued webhook listeners.
+
 ## 1.0.0 - 2026-10-28
 
 - First release.

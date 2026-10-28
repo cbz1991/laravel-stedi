@@ -166,4 +166,35 @@ class ClientTest extends TestCase
             fn (array $context) => array_keys($context) === ['status', 'duration_ms'],
         ));
     }
+
+    public function test_retry_after_is_capped_by_the_max_delay(): void
+    {
+        $this->app['config']->set('stedi.retry_max_delay', 50);
+        $this->app->forgetInstance(\Cabuz\Stedi\Stedi::class);
+        Stedi::clearResolvedInstances();
+        Http::fake(['*' => Http::sequence()
+            ->push(['message' => 'slow down'], 429, ['Retry-After' => '120'])
+            ->push(['items' => []]),
+        ]);
+
+        $started = microtime(true);
+        Stedi::searchPayers();
+
+        $this->assertLessThan(5, microtime(true) - $started);
+        Http::assertSentCount(2);
+    }
+
+    public function test_each_scope_gets_a_fresh_client(): void
+    {
+        Http::fake(['*' => Http::response(['claimId' => 'c1'])]);
+
+        Stedi::getClaim('c1');
+        $this->assertNotNull(Stedi::lastResponse());
+
+        // What Octane and the queue worker do between requests and jobs.
+        $this->app->forgetScopedInstances();
+        Stedi::clearResolvedInstances();
+
+        $this->assertNull(Stedi::lastResponse());
+    }
 }

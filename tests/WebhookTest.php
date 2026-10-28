@@ -5,6 +5,7 @@ namespace Cabuz\Stedi\Tests;
 use Cabuz\Stedi\Events\WebhookReceived;
 use Cabuz\Stedi\Exceptions\InvalidWebhookSignatureException;
 use Cabuz\Stedi\Webhooks\WebhookSignature;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Testing\TestResponse;
 use RuntimeException;
@@ -90,6 +91,21 @@ class WebhookTest extends TestCase
         $this->deliver(self::EVENT, 'msg_2')->assertOk();
 
         Event::assertDispatchedTimes(WebhookReceived::class, 2);
+    }
+
+    public function test_a_delivery_of_an_event_still_being_handled_is_retried_later(): void
+    {
+        Event::fake([WebhookReceived::class]);
+        $lock = Cache::lock('stedi-webhook:msg_1:lock', 120);
+        $lock->get();
+
+        $this->deliver(self::EVENT, 'msg_1')->assertStatus(409);
+        Event::assertNotDispatched(WebhookReceived::class);
+
+        $lock->release();
+
+        $this->deliver(self::EVENT, 'msg_1')->assertOk();
+        Event::assertDispatchedTimes(WebhookReceived::class, 1);
     }
 
     public function test_a_failed_listener_lets_stedi_retry_the_delivery(): void

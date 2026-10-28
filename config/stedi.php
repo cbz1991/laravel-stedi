@@ -31,6 +31,10 @@ return [
     | retry_delay: base delay in milliseconds between attempts; it doubles on
     | every attempt.
     |
+    | retry_max_delay: the longest wait between attempts in milliseconds, also
+    | when Stedi asks for more with Retry-After. Keep it short when requests
+    | run inside a web request.
+    |
     */
 
     'timeout' => (int) env('STEDI_TIMEOUT', 60),
@@ -38,6 +42,8 @@ return [
     'retries' => (int) env('STEDI_RETRIES', 2),
 
     'retry_delay' => (int) env('STEDI_RETRY_DELAY', 500),
+
+    'retry_max_delay' => (int) env('STEDI_RETRY_MAX_DELAY', 10000),
 
     /*
     |--------------------------------------------------------------------------
@@ -88,7 +94,9 @@ return [
     | tolerance: seconds a delivery's timestamp may differ from now.
     |
     | deduplicate: acknowledge redelivered events (same webhook-id) without
-    | firing WebhookReceived again. Uses your default cache store.
+    | firing WebhookReceived again. Uses your default cache store, and its
+    | locks when the store supports them, so concurrent deliveries of the same
+    | event are handled once.
     |
     | middleware: middleware for the webhook route.
     |

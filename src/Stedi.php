@@ -254,18 +254,16 @@ class Stedi
         }
 
         $delay = max(0, (int) $this->config('retry_delay', 500));
+        $maxDelay = max(0, (int) $this->config('retry_max_delay', 10000));
         $idempotent = $idempotent || in_array($method, ['GET', 'HEAD'], true);
 
         return $request->retry(
             $retries + 1,
-            static function (int $attempt, ?Throwable $e = null) use ($delay): int {
+            static function (int $attempt, ?Throwable $e = null) use ($delay, $maxDelay): int {
                 $retryAfter = $e instanceof RequestException ? $e->response->header('Retry-After') : '';
+                $wait = is_numeric($retryAfter) ? (int) $retryAfter * 1000 : $delay * (2 ** ($attempt - 1));
 
-                if (is_numeric($retryAfter)) {
-                    return min((int) $retryAfter, 60) * 1000;
-                }
-
-                return $delay * (2 ** ($attempt - 1));
+                return min($wait, $maxDelay);
             },
             function (Throwable $e) use ($idempotent, $method): bool {
                 $status = $e instanceof RequestException ? $e->response->status() : null;
