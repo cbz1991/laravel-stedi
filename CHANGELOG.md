@@ -4,6 +4,9 @@ All notable changes to `laravel-stedi` will be documented in this file.
 
 ## Unreleased
 
+- The example event destination secret in `resources/fakes.json` is now
+  `whsec_example`, so secret scanners no longer flag it.
+
 ## 1.1.2 - 2026-10-28
 
 - `Stedi::fake()` answers unstubbed requests with Stedi's example response

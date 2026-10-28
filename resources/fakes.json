@@ -1520,7 +1520,7 @@
   "updatedAt": "2026-02-01T12:00:00Z"
  },
  "GET events /destinations/{destinationId}/secret": {
-  "signingSecret": "whsec_ZmFrZS1zdGVkaS13ZWJob29rLXNlY3JldA=="
+  "signingSecret": "whsec_example"
  },
  "GET events /events": {
   "items": [
@@ -5764,7 +5764,7 @@
   ],
   "id": "dst_550e8400-e29b-41d4-a716-446655440000",
   "name": "My Destination",
-  "signingSecret": "whsec_ZmFrZS1zdGVkaS13ZWJob29rLXNlY3JldA==",
+  "signingSecret": "whsec_example",
   "status": "ENABLED",
   "updatedAt": "2026-02-01T12:00:00Z"
  },
@@ -5782,7 +5782,7 @@
  },
  "POST events /destinations/{destinationId}/secret/rotate": {
   "previousSecretExpiresAt": "2025-01-01T00:00:00Z",
-  "signingSecret": "whsec_ZmFrZS1zdGVkaS13ZWJob29rLXNlY3JldA=="
+  "signingSecret": "whsec_example"
  },
  "POST healthcare /change/medicalnetwork/claimstatus/v2": {
   "claims": [

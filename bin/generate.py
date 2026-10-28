@@ -58,7 +58,7 @@ def scrub(x):
     if isinstance(x, list):
         return [scrub(v) for v in x]
     if isinstance(x, str) and x.startswith('whsec_'):
-        return 'whsec_ZmFrZS1zdGVkaS13ZWJob29rLXNlY3JldA=='
+        return 'whsec_example'
     return x
 
 operations = []
