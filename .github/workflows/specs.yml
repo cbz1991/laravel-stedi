@@ -1,0 +1,64 @@
+name: specs
+
+on:
+  # Every Monday, check Stedi's OpenAPI specs for new or removed operations.
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  specs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Refresh the specs and the operation list
+        run: |
+          bin/update-specs
+          python3 -I bin/generate.py
+
+      - name: Open or update an issue when operations changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          changed() { git diff -U0 tests/Fixtures/operations.json | grep "^$1 " | sed -E 's/^[-+] *"//; s/",?$//' || true; }
+          added=$(changed '+')
+          removed=$(changed '-')
+
+          if [ -z "$added$removed" ]; then
+            echo "The specs have the same operations as the snapshot."
+            exit 0
+          fi
+
+          {
+            echo "Stedi's [OpenAPI specs](https://github.com/Stedi/openApi) no longer match \`tests/Fixtures/operations.json\`."
+            echo
+            if [ -n "$added" ]; then
+              echo "**New operations** (method, API, path)"
+              echo
+              echo "$added" | sed 's/.*/- `&`/'
+              echo
+            fi
+            if [ -n "$removed" ]; then
+              echo "**Removed operations**"
+              echo
+              echo "$removed" | sed 's/.*/- `&`/'
+              echo
+            fi
+            echo "Run \`bin/update-specs\`, then \`bin/generate\` and \`composer test\`."
+          } > body.md
+
+          title="Stedi API operations changed"
+          issue=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body-file body.md
+          else
+            gh issue create --title "$title" --body-file body.md
+          fi

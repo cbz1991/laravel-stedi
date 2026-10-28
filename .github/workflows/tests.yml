@@ -1,0 +1,88 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Laravel 10: PHP 8.1 - 8.3
+          - { php: '8.1', laravel: '10.*' }
+          - { php: '8.2', laravel: '10.*' }
+          - { php: '8.3', laravel: '10.*' }
+          # Laravel 11: PHP 8.2 - 8.4
+          - { php: '8.2', laravel: '11.*' }
+          - { php: '8.3', laravel: '11.*' }
+          - { php: '8.4', laravel: '11.*' }
+          # Laravel 12: PHP 8.2 - 8.5
+          - { php: '8.2', laravel: '12.*' }
+          - { php: '8.3', laravel: '12.*' }
+          - { php: '8.4', laravel: '12.*' }
+          - { php: '8.5', laravel: '12.*' }
+          # Laravel 13: PHP 8.3 - 8.5
+          - { php: '8.3', laravel: '13.*' }
+          - { php: '8.4', laravel: '13.*' }
+          - { php: '8.5', laravel: '13.*' }
+
+    name: PHP ${{ matrix.php }} - Laravel ${{ matrix.laravel }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Install dependencies
+        env:
+          # Authenticate Composer with the runner token to avoid GitHub API rate limits.
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.GITHUB_TOKEN }}"}}'
+        run: |
+          # Composer 2.9+ refuses packages with security advisories by default. The
+          # matrix deliberately tests end-of-life Laravel releases, so allow them here.
+          composer config audit.block-insecure false
+          # Larastan and Pint need newer PHP / Laravel than the oldest pairs here;
+          # they run in the "quality" job instead.
+          composer remove --dev larastan/larastan laravel/pint --no-interaction --no-update
+          composer require --dev "laravel/framework:${{ matrix.laravel }}" --no-interaction --no-update
+          composer update --prefer-dist --no-interaction --no-progress --with-all-dependencies
+
+      - name: Run tests
+        run: vendor/bin/phpunit
+
+  quality:
+    runs-on: ubuntu-latest
+
+    name: Static analysis & code style
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Install dependencies
+        env:
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.GITHUB_TOKEN }}"}}'
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Check code style (Pint)
+        run: composer lint
+
+      - name: Static analysis (PHPStan)
+        run: composer analyse

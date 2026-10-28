@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Regenerate the operation methods (src/Concerns), the facade docblock and api.md
+# from the OpenAPI snapshots. Needs python3.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+python3 -I bin/generate.py
+UPDATE_REFERENCE=1 vendor/bin/phpunit --filter ReferenceTest
+vendor/bin/pint --quiet src

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Refresh the OpenAPI snapshots in tests/Fixtures/openapi from github.com/Stedi/openApi.
+# Then run bin/generate and composer test.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+for spec in claims core enrollment event-destinations healthcare manager payers; do
+  curl -fsSL "https://raw.githubusercontent.com/Stedi/openApi/main/${spec}.json" -o "tests/Fixtures/openapi/${spec}.json"
+done
+echo "Updated tests/Fixtures/openapi. Run bin/generate next."

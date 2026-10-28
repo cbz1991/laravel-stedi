@@ -1,0 +1,64 @@
+{
+    "name": "cabuz/laravel-stedi",
+    "description": "Laravel SDK for the Stedi healthcare APIs: real-time eligibility checks, claims, claim status, remittances, payers, enrollment and signed webhooks.",
+    "keywords": ["laravel", "laravel-package", "php", "stedi", "sdk", "api-client", "healthcare", "edi", "x12", "eligibility", "claims", "clearinghouse", "webhooks"],
+    "license": "MIT",
+    "homepage": "https://github.com/cbz1991/laravel-stedi",
+    "authors": [
+        {
+            "name": "Florin Cabuz",
+            "email": "florin.cabuz@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/cbz1991/laravel-stedi/issues",
+        "source": "https://github.com/cbz1991/laravel-stedi"
+    },
+    "require": {
+        "php": "^8.1",
+        "guzzlehttp/guzzle": "^7.5",
+        "illuminate/cache": "^10.10 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/console": "^10.10 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/contracts": "^10.10 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/http": "^10.10 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/routing": "^10.10 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/support": "^10.10 || ^11.0 || ^12.0 || ^13.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.13",
+        "orchestra/testbench": "^8.0 || ^9.0 || ^10.0 || ^11.0",
+        "phpunit/phpunit": "^10.5 || ^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Cabuz\\Stedi\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Cabuz\\Stedi\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Cabuz\\Stedi\\StediServiceProvider"
+            ],
+            "aliases": {
+                "Stedi": "Cabuz\\Stedi\\Facades\\Stedi"
+            }
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "analyse": "vendor/bin/phpstan analyse --memory-limit=1G",
+        "format": "vendor/bin/pint",
+        "lint": "vendor/bin/pint --test"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "prefer-stable": true
+}
