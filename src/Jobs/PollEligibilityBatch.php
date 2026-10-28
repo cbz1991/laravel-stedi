@@ -29,6 +29,12 @@ class PollEligibilityBatch implements ShouldBeEncrypted, ShouldQueue
     public const FINISHED = ['COMPLETED', 'COMPLETED_WITH_ERRORS', 'VALIDATION_FAILED'];
 
     /**
+     * The Stedi batch ID. Not named $batchId, which Laravel reserves for its
+     * own job batches and copies unencrypted into the queue payload.
+     */
+    public string $stediBatchId;
+
+    /**
      * When to give up (Unix time).
      */
     public int $deadline;
@@ -39,12 +45,18 @@ class PollEligibilityBatch implements ShouldBeEncrypted, ShouldQueue
      * @param  string|null  $apiKey  The key the batch was submitted with, when it is not the configured one.
      */
     public function __construct(
-        public string $batchId,
+        string $batchId,
         public int $interval = 60,
         int $timeout = 86400,
         public ?string $apiKey = null,
     ) {
+        $this->stediBatchId = $batchId;
         $this->deadline = time() + $timeout;
+    }
+
+    public function batchId(): string
+    {
+        return $this->stediBatchId;
     }
 
     public function handle(Stedi $stedi, Events $events, Bus $bus): void
@@ -53,7 +65,7 @@ class PollEligibilityBatch implements ShouldBeEncrypted, ShouldQueue
             $stedi = $stedi->withApiKey($this->apiKey);
         }
 
-        $batch = $stedi->getBatch($this->batchId);
+        $batch = $stedi->getBatch($this->stediBatchId);
 
         if (in_array($batch['status'] ?? null, static::FINISHED, true)) {
             $events->dispatch(new EligibilityBatchFinished($batch));
@@ -62,7 +74,7 @@ class PollEligibilityBatch implements ShouldBeEncrypted, ShouldQueue
         }
 
         if (time() + $this->interval > $this->deadline) {
-            throw new RuntimeException("Stedi eligibility batch [{$this->batchId}] did not finish in time.");
+            throw new RuntimeException("Stedi eligibility batch [{$this->stediBatchId}] did not finish in time.");
         }
 
         $next = clone $this;

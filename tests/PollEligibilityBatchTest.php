@@ -5,7 +5,9 @@ namespace Cabuz\Stedi\Tests;
 use Cabuz\Stedi\Events\EligibilityBatchFinished;
 use Cabuz\Stedi\Facades\Stedi;
 use Cabuz\Stedi\Jobs\PollEligibilityBatch;
+use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Http\Client\Request;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
@@ -21,7 +23,7 @@ class PollEligibilityBatchTest extends TestCase
 
         $this->app->call([new PollEligibilityBatch('b1', interval: 30), 'handle']);
 
-        Bus::assertDispatched(PollEligibilityBatch::class, fn (PollEligibilityBatch $job) => $job->batchId === 'b1' && $job->delay === 30);
+        Bus::assertDispatched(PollEligibilityBatch::class, fn (PollEligibilityBatch $job) => $job->batchId() === 'b1' && $job->delay === 30);
         Event::assertNotDispatched(EligibilityBatchFinished::class);
     }
 
@@ -48,5 +50,37 @@ class PollEligibilityBatchTest extends TestCase
         $this->expectException(RuntimeException::class);
 
         $this->app->call([new PollEligibilityBatch('b1', interval: 60, timeout: 30), 'handle']);
+    }
+
+    public function test_it_runs_through_a_real_queue_encrypted(): void
+    {
+        $this->app['config']->set('queue.default', 'sync');
+        $this->app['config']->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
+        Stedi::fake(['manager/eligibility-manager/batch/b1' => Http::sequence()
+            ->push(['id' => 'b1', 'status' => 'IN_PROGRESS'])
+            ->push(['id' => 'b1', 'status' => 'COMPLETED']),
+        ]);
+        Event::fake([EligibilityBatchFinished::class]);
+
+        $payloads = [];
+        Event::listen(JobProcessing::class, function (JobProcessing $event) use (&$payloads) {
+            $payloads[] = $event->job->getRawBody();
+        });
+
+        $this->app->make(Dispatcher::class)->dispatch(new PollEligibilityBatch('b1', interval: 0, apiKey: 'tenant-key'));
+
+        $this->assertCount(2, $payloads, 'The running batch queued a second check.');
+        foreach ($payloads as $payload) {
+            $data = json_decode($payload, true)['data'];
+
+            $this->assertStringNotContainsString('tenant-key', $payload);
+            $this->assertStringNotContainsString('stediBatchId', $payload, 'The job is encrypted.');
+            $this->assertStringStartsWith('eyJ', $data['command'], 'The job is encrypted.');
+            $this->assertNull($data['batchId'] ?? null, 'The Stedi batch ID is not taken for a Laravel job batch.');
+        }
+
+        Event::assertDispatchedTimes(EligibilityBatchFinished::class, 1);
+        Stedi::assertSentCount(2, 'manager/*');
+        Stedi::assertSent('manager/eligibility-manager/batch/b1', fn (array $body, Request $request) => $request->hasHeader('Authorization', 'tenant-key'));
     }
 }

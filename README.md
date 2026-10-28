@@ -139,8 +139,12 @@ payer.
 
 The filters are optional: `service` (an STC code), `network` (`IN_NETWORK` or
 `OUT_OF_NETWORK`; entries for both networks match either) and `level`
-(`INDIVIDUAL`, `FAMILY`, ...). Amounts come back as strings, exactly as the
-payer sent them, or `null` when the payer sent none. Wrap a response you
+(`INDIVIDUAL`, `FAMILY`, ...; `INDIVIDUAL` also matches the `EMPLOYEE_ONLY`
+entries payers use for the subscriber's own cost sharing). Amounts come back
+as strings, exactly as the payer sent them, or `null` when the payer sent
+none. Payers often send several entries for the same service and network (one
+per place of service, say); the helpers return the first, and `benefits()`
+returns them all. Wrap a response you
 already have with `EligibilityResponse::from($array)`.
 
 The other eligibility endpoints return arrays:

@@ -62,6 +62,21 @@ class EligibilityResponseTest extends TestCase
         $this->assertSame([], EligibilityResponse::from([])->plans());
     }
 
+    public function test_individual_level_also_matches_employee_only_entries(): void
+    {
+        $eligibility = EligibilityResponse::from(['plans' => [['benefits' => [
+            'coPayment' => [
+                ['amount' => '30', 'coverageLevel' => 'EMPLOYEE_ONLY', 'service' => ['system' => 'STC', 'value' => '98']],
+                ['amount' => '60', 'coverageLevel' => 'FAMILY', 'service' => ['system' => 'STC', 'value' => '98']],
+            ],
+        ]]]]);
+
+        $this->assertSame('30', $eligibility->copay('98', level: 'INDIVIDUAL'));
+        $this->assertSame('30', $eligibility->copay('98', level: 'employee_only'));
+        $this->assertSame('60', $eligibility->copay('98', level: 'FAMILY'));
+        $this->assertNull($eligibility->copay('98', level: 'SPOUSE_ONLY'));
+    }
+
     public function test_a_payers_aaa_rejection_is_returned_not_thrown(): void
     {
         Http::fake(['*' => Http::sequence()

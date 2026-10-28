@@ -28,6 +28,13 @@ bin/generate       # rebuild src/Concerns, the facade docblock, api.md and resou
 composer test
 ```
 
+`tests/LiveTest.php` calls Stedi's real API with Stedi's mock requests. It is
+skipped unless you pass a test key (never commit one):
+
+```bash
+STEDI_LIVE_KEY=test_... vendor/bin/phpunit --filter LiveTest
+```
+
 `OperationCoverageTest` fails when a method calls an operation that isn't in
 the specs, or when an operation has no method. `ReferenceTest` fails when
 [`api.md`](api.md) or the facade docblock is out of date. A scheduled

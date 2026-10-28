@@ -4,8 +4,19 @@ All notable changes to `laravel-stedi` will be documented in this file.
 
 ## Unreleased
 
+## 1.1.3 - 2026-10-28
+
+- `PollEligibilityBatch` stores the Stedi batch ID as `$stediBatchId` (read it
+  with `batchId()`). The `$batchId` property clashed with Laravel's job
+  batches, so the ID was copied unencrypted into the queue payload. The
+  constructor is unchanged.
+- The `INDIVIDUAL` level filter of `EligibilityResponse` also matches
+  `EMPLOYEE_ONLY` entries, which payers use for the subscriber's own copays
+  and coinsurance; `copay('98', level: 'INDIVIDUAL')` returned null before.
 - The example event destination secret in `resources/fakes.json` is now
   `whsec_example`, so secret scanners no longer flag it.
+- Tests: a live suite against Stedi's test mode (`STEDI_LIVE_KEY`, skipped
+  without it), and the batch job run through a real (sync) queue, encrypted.
 
 ## 1.1.2 - 2026-10-28
 

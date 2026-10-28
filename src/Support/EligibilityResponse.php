@@ -16,7 +16,12 @@ use LogicException;
  * The benefit helpers take the same optional filters:
  *  - service: a Service Type Code, e.g. "30" (plan coverage) or "98" (office visit)
  *  - network: "IN_NETWORK" or "OUT_OF_NETWORK" (entries for both networks match either)
- *  - level:   "INDIVIDUAL", "FAMILY", ... (entries without one are individual)
+ *  - level:   "INDIVIDUAL", "FAMILY", ... (entries without one are individual,
+ *             and "INDIVIDUAL" also matches the payer's "EMPLOYEE_ONLY")
+ *
+ * When several entries match (payers often send one per place of service or
+ * with different messages), the amount helpers return the first; use
+ * benefits() to see them all.
  *
  * The array access reads the raw response, so $response['plans'] still works.
  *
@@ -29,6 +34,12 @@ class EligibilityResponse implements Arrayable, ArrayAccess, JsonSerializable
      * Time periods that describe what is left or already used, not the plan's total.
      */
     protected const PROGRESS_PERIODS = ['REMAINING', 'LIFETIME_REMAINING', 'YEAR_TO_DATE', 'EXCEEDED', 'NOT_EXCEEDED'];
+
+    /**
+     * Coverage levels that mean the same for a filter: payers send cost
+     * sharing for the subscriber alone as either INDIVIDUAL or EMPLOYEE_ONLY.
+     */
+    protected const LEVELS = ['INDIVIDUAL' => ['INDIVIDUAL', 'EMPLOYEE_ONLY']];
 
     /**
      * @param  array<string, mixed>  $response
@@ -233,7 +244,7 @@ class EligibilityResponse implements Arrayable, ArrayAccess, JsonSerializable
             return false;
         }
 
-        if ($level !== null && ($entry['coverageLevel'] ?? 'INDIVIDUAL') !== strtoupper($level)) {
+        if ($level !== null && ! in_array($entry['coverageLevel'] ?? 'INDIVIDUAL', static::LEVELS[strtoupper($level)] ?? [strtoupper($level)], true)) {
             return false;
         }
 
